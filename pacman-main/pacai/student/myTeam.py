@@ -1,157 +1,140 @@
 from pacai.agents.capture.capture import CaptureAgent
-from pacai.core.distance import maze as mazeDistance
-import random
 
-class AggressiveOffensiveAgent(CaptureAgent):
+class DefensiveAgent(CaptureAgent):
     def registerInitialState(self, gameState):
         super().registerInitialState(gameState)
-        walls = gameState.getWalls()
-        self.midLine = walls._width // 2
-        self.capsules = gameState.getCapsules()
-
+        self.walls = gameState.getWalls()
+        self.width = self.walls._width
+        self.height = self.walls._height
+        self.borderline = self.width // 2 - 1 if self.red else self.width // 2
+        
     def chooseAction(self, gameState):
-        myPos = gameState.getAgentPosition(self.index)
-        if self.isPacman(gameState, myPos):
-            return self.offensiveMove(gameState)
-        return self.patrolMidLine(gameState)
-
-    def isPacman(self, gameState, position):
-        if self.red:
-            return position[0] >= self.midLine
-        else:
-            return position[0] < self.midLine
-
-    def offensiveMove(self, gameState):
-        myPos = gameState.getAgentPosition(self.index)
-        ghosts = [
-            gameState.getAgentPosition(i)
-            for i in self.getOpponents(gameState)
-            if gameState.getAgentPosition(i)
-        ]
-        if any(mazeDistance(myPos, g, gameState) < 3 for g in ghosts):
-            return self.escapeGhost(gameState, ghosts)
-        foodList = gameState.getFood().asList()
-        if foodList:
-            targetFood = min(foodList, key=lambda f: mazeDistance(myPos, f, gameState))
-            return self.moveTowards(gameState, targetFood)
-        return self.randomMove(gameState)
-
-    def escapeGhost(self, gameState, ghosts):
-        actions = gameState.getLegalActions(self.index)
-        safeActions = []
+        actions = [a for a in gameState.getLegalActions(self.index)
+                  if not self.isInEnemyTerritory(
+                      gameState.generateSuccessor(self.index, a).getAgentPosition(self.index))]
         
-        for a in actions:
-            successor = gameState.generateSuccessor(self.index, a)
-            newPos = successor.getAgentPosition(self.index)
-            safe = True
-            for g in ghosts:
-                if mazeDistance(newPos, g, gameState) < 3:
-                    safe = False
-                    break
-            if safe:
-                safeActions.append(a)
+        if not actions:
+            actions = gameState.getLegalActions(self.index)
         
-        return random.choice(safeActions) if safeActions else random.choice(actions)
-
-
-    def patrolMidLine(self, gameState):
-        myPos = gameState.getAgentPosition(self.index)
-        walls = gameState.getWalls()
-        y = myPos[1]
-        while walls[self.midLine][y]:
-            y = (y + 1) % walls._height
-        target = (self.midLine, y)
-        return self.moveTowards(gameState, target)
-
-    def moveTowards(self, gameState, target):
-        actions = gameState.getLegalActions(self.index)
-        walls = gameState.getWalls()
-
-        validActions = [
-            a for a in actions
-            if not walls[gameState.generateSuccessor(self.index, a).getAgentPosition(self.index)[0]]
-                        [gameState.generateSuccessor(self.index, a).getAgentPosition(self.index)[1]]
-        ]
-
-        if not validActions:
-            return random.choice(actions)
-
-        return min(
-            validActions,
-            key=lambda a: mazeDistance(
-                gameState.generateSuccessor(self.index, a).getAgentPosition(self.index),
-                target,
-                gameState
-            )
-        )
-
-    def randomMove(self, gameState):
-        actions = gameState.getLegalActions(self.index)
         if 'Stop' in actions:
             actions.remove('Stop')
-        return random.choice(actions)
-
-class ReactiveDefensiveAgent(CaptureAgent):
-    def registerInitialState(self, gameState):
-        super().registerInitialState(gameState)
-
-    def chooseAction(self, gameState):
-        return self.getAction(gameState)
-
-    def getAction(self, gameState):
+            
         myPos = gameState.getAgentPosition(self.index)
-        invaders = [
-            i for i in self.getOpponents(gameState) 
-            if gameState.getAgentPosition(i) and self.isOpponentPacman(gameState, i)
-        ]
+        invaders = self.getVisibleInvaders(gameState)
+        
         if invaders:
-            closestInvader = min(
-                invaders, 
-                key=lambda i: mazeDistance(myPos, gameState.getAgentPosition(i), gameState)
-            )
-            if mazeDistance(myPos, gameState.getAgentPosition(closestInvader), gameState) <= 2:
-                return self.captureInvader(gameState, closestInvader)
-            return self.moveTowards(gameState, gameState.getAgentPosition(closestInvader))
+            closestInvader = min(invaders, key=lambda x: self.getMazeDistance(myPos, x))
+            return self.chaseInvader(gameState, closestInvader, actions)
+            
+        return self.patrolTerritory(gameState, actions)
+    
+    def getVisibleInvaders(self, gameState):
+        invaders = []
+        for opponent in self.getOpponents(gameState):
+            pos = gameState.getAgentPosition(opponent)
+            if pos and self.isInOurTerritory(pos):
+                invaders.append(pos)
+        return invaders
+
+    def isInEnemyTerritory(self, pos):
+        if self.red:
+            return pos[0] >= self.borderline
+        return pos[0] < self.borderline
+
+    def isInOurTerritory(self, pos):
+        return not self.isInEnemyTerritory(pos)
+
+    def chaseInvader(self, gameState, invaderPos, actions):
+        return min(actions,
+                  key=lambda x: self.getMazeDistance(
+                      gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                      invaderPos))
+
+    def patrolTerritory(self, gameState, actions):
+        # myPos = gameState.getAgentPosition(self.index)
+        food = self.getFoodYouAreDefending(gameState).asList()
         
-        criticalFood = gameState.getFoodYouAreDefending().asList()
-        if criticalFood:
-            targetFood = min(criticalFood, key=lambda f: mazeDistance(myPos, f, gameState))
-            return self.moveTowards(gameState, targetFood)
+        if food:
+            borderFood = min(food, key=lambda x: abs(x[0] - self.borderline))
+            return min(actions,
+                      key=lambda x: self.getMazeDistance(
+                          gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                          borderFood))
         
-        return self.randomMove(gameState)
+        target = (self.borderline, self.height // 2)
+        return min(actions,
+                  key=lambda x: self.getMazeDistance(
+                      gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                      target))
 
-    def isOpponentPacman(self, gameState, opponentIndex):
-        opponentPos = gameState.getAgentPosition(opponentIndex)
-        if opponentPos:
-            if self.red:
-                return opponentPos[0] >= gameState.getWalls()._width // 2
-            else:
-                return opponentPos[0] < gameState.getWalls()._width // 2
-        return False
-
-
-    def captureInvader(self, gameState, invader):
-        return self.moveTowards(gameState, gameState.getAgentPosition(invader))
-
-    def moveTowards(self, gameState, target):
-        actions = gameState.getLegalActions(self.index)
-        return min(
-            actions,
-            key=lambda a: mazeDistance(
-                gameState.generateSuccessor(self.index, a).getAgentPosition(self.index),
-                target,
-                gameState
-            )
-        )
-
-    def randomMove(self, gameState):
+class OffensiveAgent(CaptureAgent):
+    def registerInitialState(self, gameState):
+        super().registerInitialState(gameState)
+        self.walls = gameState.getWalls()
+        self.width = self.walls._width
+        self.height = self.walls._height
+        self.midline = self.width // 2
+        
+    def chooseAction(self, gameState):
+        myPos = gameState.getAgentPosition(self.index)
+        ghosts = self.getVisibleGhosts(gameState)
+        
         actions = gameState.getLegalActions(self.index)
         if 'Stop' in actions:
             actions.remove('Stop')
-        return random.choice(actions)
+        
+        dangerousGhosts = [(pos, scared) for pos, scared in ghosts
+                          if not scared and self.getMazeDistance(myPos, pos) <= 1]
+                          
+        if dangerousGhosts:
+            return self.escapeGhost(gameState, dangerousGhosts[0][0], actions)
+        
+        return self.huntFood(gameState, ghosts, actions)
+    
+    def getVisibleGhosts(self, gameState):
+        ghosts = []
+        for opponent in self.getOpponents(gameState):
+            pos = gameState.getAgentPosition(opponent)
+            if pos:
+                scared = bool(gameState.getAgentState(opponent)._scaredTimer > 0)
+                ghosts.append((pos, scared))
+        return ghosts
+    
+    def escapeGhost(self, gameState, ghostPos, actions):
+        return max(actions,
+                  key=lambda x: self.getMazeDistance(
+                      gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                      ghostPos))
+    
+    def huntFood(self, gameState, ghosts, actions):
+        myPos = gameState.getAgentPosition(self.index)
+        foodList = self.getFood(gameState).asList()
+        
+        if not foodList:
+            return 'Stop'
+    
+        foodScores = []
+        for food in foodList:
+            score = -self.getMazeDistance(myPos, food)
+            
+            for ghostPos, scared in ghosts:
+                if not scared:
+                    ghostDist = self.getMazeDistance(food, ghostPos)
+                    if ghostDist < 2:
+                        score -= 100
+            
+            foodScores.append((score, food))
+
+        targetFood = max(foodScores, key=lambda x: x[0])[1]
+        
+        return min(actions,
+                  key=lambda x: self.getMazeDistance(
+                      gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                      targetFood))
 
 def createTeam(firstIndex, secondIndex, isRed):
+
     return [
-        AggressiveOffensiveAgent(firstIndex),
-        ReactiveDefensiveAgent(secondIndex),
+        OffensiveAgent(firstIndex),
+        DefensiveAgent(secondIndex)
     ]
