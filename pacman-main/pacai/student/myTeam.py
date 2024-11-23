@@ -74,23 +74,37 @@ class OffensiveAgent(CaptureAgent):
         self.width = self.walls._width
         self.height = self.walls._height
         self.midline = self.width // 2
+        self.safeRegionRadius = 5 
         
     def chooseAction(self, gameState):
         myPos = gameState.getAgentPosition(self.index)
         ghosts = self.getVisibleGhosts(gameState)
-        
         actions = gameState.getLegalActions(self.index)
+
         if 'Stop' in actions:
             actions.remove('Stop')
-        
+
+        # Identify dangerous ghosts
         dangerousGhosts = [(pos, scared) for pos, scared in ghosts
-                          if not scared and self.getMazeDistance(myPos, pos) <= 1]
-                          
-        if dangerousGhosts:
-            return self.escapeGhost(gameState, dangerousGhosts[0][0], actions)
-        
+                           if not scared and self.getMazeDistance(myPos, pos) <= 1]
+
+        if dangerousGhosts and self.isInEnemyTerritory(myPos):
+            return self.avoidTrapsAndEscape(gameState, dangerousGhosts, actions)
+
         return self.huntFood(gameState, ghosts, actions)
     
+    def isInEnemyTerritory(self, pos):
+        if self.red:
+            if pos[0] < self.midline:
+                return False
+            else:
+                return True
+        else:
+            if pos[0] > self.midline:
+                return False
+            else:
+                return True
+
     def getVisibleGhosts(self, gameState):
         ghosts = []
         for opponent in self.getOpponents(gameState):
@@ -100,12 +114,73 @@ class OffensiveAgent(CaptureAgent):
                 ghosts.append((pos, scared))
         return ghosts
     
-    def escapeGhost(self, gameState, ghostPos, actions):
-        return max(actions,
+    def avoidTrapsAndEscape(self, gameState, ghosts, actions):
+        myPos = gameState.getAgentPosition(self.index)
+        closestGhost = min(ghosts, key=lambda x: self.getMazeDistance(myPos, x[0]))[0]
+
+        if self.getMazeDistance(myPos, closestGhost) <= 3:
+            return self.escape(gameState, closestGhost, actions)
+
+        safeActions = self.filterSafeActions(gameState, actions)
+
+        if safeActions:
+            return min(safeActions,
+                      key=lambda x: self.getMazeDistance(
+                          gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                          closestGhost))
+        
+        return self.retreatToSafety(gameState, actions)
+
+    
+    def escape(self, gameState, ghosts, actions):
+        myPos = gameState.getAgentPosition(self.index)
+        safeActions = self.filterSafeActions(gameState, ghosts, actions)
+        
+        if not safeActions:
+            return self.retreatToSafety(gameState, actions)
+        
+        return min(safeActions,
                   key=lambda x: self.getMazeDistance(
                       gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
-                      ghostPos))
+                      self.getHomeRegion(gameState)))
+
+    def filterSafeActions(self, gameState, ghosts, actions):
+        return [a for a in actions
+                if not self.isDeadEnd(gameState, gameState.generateSuccessor(self.index, a).getAgentPosition(self.index))]
     
+    def isDeadEnd(self, gameState, pos):
+        return len(self.getLegalActions(gameState, pos)) <= 1
+
+    def getLegalActions(self, gameState, pos):
+        return [a for a in gameState.getLegalActions(self.index)
+                if gameState.generateSuccessor(self.index, a).getAgentPosition(self.index) != pos]
+
+    def retreatToSafety(self, gameState, actions):
+        myPos = gameState.getAgentPosition(self.index)
+        safeActions = self.filterSafeActions(gameState, actions)
+        
+        if not safeActions:
+            return 'Stop'
+        
+        return min(safeActions,
+                  key=lambda x: self.getMazeDistance(
+                      gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                      self.getHomeRegion(gameState)))
+
+    def retreatToHome(self, gameState, actions):
+        myPos = gameState.getAgentPosition(self.index)
+        return min(actions,
+                  key=lambda x: self.getMazeDistance(
+                      gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                      self.getHomeRegion(gameState)))
+
+    def getHomeRegion(self, gameState):
+        myPos = gameState.getAgentPosition(self.index)
+        if self.red:
+            return (self.midline - 1, self.height // 2)
+        else:
+            return (self.midline, self.height // 2)
+
     def huntFood(self, gameState, ghosts, actions):
         myPos = gameState.getAgentPosition(self.index)
         foodList = self.getFood(gameState).asList()
