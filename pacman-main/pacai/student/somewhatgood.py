@@ -68,6 +68,7 @@ class OffensiveAgent(CaptureAgent):
         self.previousPosition = None
 
     def chooseAction(self, gameState):
+        # print("Choose Action | Offensive Class")
         if self.teamIndex is None:
             allys = self.getTeam(gameState)
             self.teamIndex = [i for i in allys if i != self.index][0]
@@ -79,11 +80,18 @@ class OffensiveAgent(CaptureAgent):
 
         opponents = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
         opponentGhosts = [a for a in opponents if not a.isPacman and a.getPosition() is not None]
-        
-        if (len(opponentGhosts) == 2 and 
-            all(self.isInOurTerritory(ghost.getPosition()) for ghost in opponentGhosts)):
-            return self.playDefensive(gameState, actions)
 
+        '''
+        print(all(self.isInOurTerritory(ghost.getPosition()) for ghost in opponentGhosts))
+        if (all(self.isInOurTerritory(ghost.getPosition()) for ghost in opponentGhosts)):
+            print("Triggered")
+            if not self.isInOurTerritory(myPos):
+                print("Retreat")
+                self.foodCarried = 0
+                return self.returnToSafeZone(gameState, actions)
+            return self.playDefensive(gameState, actions)
+        '''
+            
         frontGhost = self.checkFrontGhost(gameState, myPos, opponentGhosts)
         if frontGhost:
             return self.findAlternatePath(gameState, actions, frontGhost)
@@ -110,6 +118,22 @@ class OffensiveAgent(CaptureAgent):
         if self.foodCarried >= self.maxFoodCarry:
             return self.returnToSafeZone(gameState, actions)
         return self.goToFoodCluster(gameState, actions, defenders)
+    
+    def retreat(self, gameState, actions):
+        myPos = gameState.getAgentPosition(self.index)
+        targetX = self.width // 4 if self.red else 3 * self.width // 4
+        targetY = self.height // 2
+        target = (targetX, targetY)
+        problem = SearchProblem(gameState, myPos, target, gameState.getWalls())
+        path = self.aStarSearch(problem, lambda x: self.getMazeDistance(x, target))
+        
+        if path:
+            return path[0]
+
+        return min(actions, key=lambda x: self.getMazeDistance(
+            gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+            target
+        ))
 
     def checkFrontGhost(self, gameState, myPos, opponentGhosts):
         if not opponentGhosts:
@@ -411,6 +435,7 @@ class DefensiveAgent(CaptureAgent):
         self.height = self.walls.getHeight()
         self.midX = self.width // 2 - 1 if self.red else self.width // 2
         self.patrolPoints = []
+        self.ghostKills = 0 
         
         for y in range(1, self.height - 1):
             if not gameState.hasWall(self.midX, y):
@@ -423,6 +448,7 @@ class DefensiveAgent(CaptureAgent):
         self.chaseThreshold = 5
 
     def chooseAction(self, gameState):
+        # print("Choose Action | Defensive Class")
         if self.teamIndex is None:
             allys = self.getTeam(gameState)
             self.teamIndex = [i for i in allys if i != self.index][0]
@@ -436,11 +462,13 @@ class DefensiveAgent(CaptureAgent):
 
         if 'Stop' in actions:
             actions.remove('Stop')
-            
-        if (len(ghosts) == 2 and 
-            all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts)):
+
+        # print(len(ghosts))
+        # print(all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts))
+        if (all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts)):
+            print("triggered")
             return self.playOffensive(gameState)
-            
+        
         if invaders:
             invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
             closestInvader = min(invaderDists, key=lambda x: x[0])[1]
@@ -582,7 +610,7 @@ class DefensiveAgent(CaptureAgent):
                     return False
                     
         return True
-
+    
     def aStarSearch(self, problem, heuristic):
         pq = PriorityQueue()
         visited = set()
