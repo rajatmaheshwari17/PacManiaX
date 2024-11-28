@@ -1,6 +1,7 @@
 from pacai.agents.capture.capture import CaptureAgent
 from pacai.core.directions import Directions
 from pacai.util.priorityQueue import PriorityQueue
+import time
 
 def betterHeuristic(pos, goal, gameState):
     x1, y1 = int(pos[0]), int(pos[1])
@@ -68,7 +69,7 @@ class OffensiveAgent(CaptureAgent):
         self.previousPosition = None
 
     def chooseAction(self, gameState):
-        # print("Choose Action | Offensive Class")
+        # print("Choose Action | Offensive Class")s
         if self.teamIndex is None:
             allys = self.getTeam(gameState)
             self.teamIndex = [i for i in allys if i != self.index][0]
@@ -435,7 +436,9 @@ class DefensiveAgent(CaptureAgent):
         self.height = self.walls.getHeight()
         self.midX = self.width // 2 - 1 if self.red else self.width // 2
         self.patrolPoints = []
-        self.ghostKills = 0 
+        self.ghostKills = 0
+        self.start_time = time.time()
+        self.initial_defense_period = 30 
         
         for y in range(1, self.height - 1):
             if not gameState.hasWall(self.midX, y):
@@ -447,8 +450,8 @@ class DefensiveAgent(CaptureAgent):
         self.patrolIndex = 0
         self.chaseThreshold = 5
 
+    '''
     def chooseAction(self, gameState):
-        # print("Choose Action | Defensive Class")
         if self.teamIndex is None:
             allys = self.getTeam(gameState)
             self.teamIndex = [i for i in allys if i != self.index][0]
@@ -457,15 +460,34 @@ class DefensiveAgent(CaptureAgent):
         myPos = myState.getPosition()
         enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
         invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
-        ghosts = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
         actions = gameState.getLegalActions(self.index)
+        elapsed_time = time.time() - self.start_time
 
         if 'Stop' in actions:
             actions.remove('Stop')
 
-        # print(len(ghosts))
-        # print(all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts))
-        if (all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts)):
+        print(f"Elapsed time: {elapsed_time:.2f} seconds")
+        
+        if elapsed_time <= self.initial_defense_period:
+            if invaders:
+                invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+                closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+                invaderPos = closestInvader.getPosition()
+                problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+                path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+                
+                if path:
+                    nextPos = gameState.generateSuccessor(self.index, path[0]).getAgentPosition(self.index)
+                    if self.isInOurTerritory(nextPos):
+                        return path[0]
+                    
+                return self.patrolBehavior(gameState, myPos, actions)
+            
+            return self.patrolBehavior(gameState, myPos, actions)
+
+        ghosts = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
+        print("time meet")
+        if all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts):
             print("triggered")
             return self.playOffensive(gameState)
         
@@ -484,30 +506,244 @@ class DefensiveAgent(CaptureAgent):
                 invaderPos))
         
         return self.patrolBehavior(gameState, myPos, actions)
+    '''
+    '''
+    def chooseAction(self, gameState):
+        if self.teamIndex is None:
+            allys = self.getTeam(gameState)
+            self.teamIndex = [i for i in allys if i != self.index][0]
+
+        myState = gameState.getAgentState(self.index)
+        myPos = myState.getPosition()
+        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
+        ghosts = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
+        actions = gameState.getLegalActions(self.index)
+        elapsed_time = time.time() - self.start_time
+
+        if 'Stop' in actions:
+            actions.remove('Stop')
+
+        print(f"Elapsed time: {elapsed_time:.2f} seconds")
+
+        if self.isAtStart(myPos, gameState):
+            if invaders:
+                invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+                closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+                invaderPos = closestInvader.getPosition()
+                problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+                path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+                
+                if path:
+                    return path[0]
         
-    def patrolBehavior(self, gameState, myPos, actions):
-        beliefs = self.getBeliefs(gameState)
-        if beliefs:
-            mostLikelyPos = max(beliefs, key=beliefs.get)
-            problem = SearchProblem(gameState, myPos, mostLikelyPos, self.walls)
-            path = self.aStarSearch(problem, lambda x: betterHeuristic(x, mostLikelyPos, gameState))
+        if elapsed_time <= self.initial_defense_period:
+            if invaders:
+                invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+                closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+                invaderPos = closestInvader.getPosition()
+                problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+                path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+                
+                if path:
+                    nextPos = gameState.generateSuccessor(self.index, path[0]).getAgentPosition(self.index)
+                    if self.isInOurTerritory(nextPos):
+                        return path[0]
+                return self.patrolBehavior(gameState, myPos, actions)
+            
+            return self.patrolBehavior(gameState, myPos, actions)
+
+        print("time meet")
+        if not self.isAtStart(myPos, gameState):
+            if all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts):
+                print("triggered")
+                return self.playOffensive(gameState)
+        
+        if invaders:
+            invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+            closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+            invaderPos = closestInvader.getPosition()
+            problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+            path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+            
             if path:
                 return path[0]
+                
+            return min(actions, key=lambda x: self.getMazeDistance(
+                gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                invaderPos))
         
-        if not self.patrolPoints:
+        return self.patrolBehavior(gameState, myPos, actions)
+    '''
+    '''
+    def chooseAction(self, gameState):
+        if self.teamIndex is None:
+            allys = self.getTeam(gameState)
+            self.teamIndex = [i for i in allys if i != self.index][0]
+
+        myState = gameState.getAgentState(self.index)
+        myPos = myState.getPosition()
+        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None]
+        ghosts = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
+        actions = gameState.getLegalActions(self.index)
+        elapsed_time = time.time() - self.start_time
+
+        if 'Stop' in actions:
+            actions.remove('Stop')
+
+        print(f"Elapsed time: {elapsed_time:.2f} seconds")
+        
+        if self.isAtStart(myPos, gameState):
+            print("Agent respawned - checking for invaders")
+            if invaders:
+                print("Found invaders after respawn - switching to defense")
+                invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+                closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+                invaderPos = closestInvader.getPosition()
+                problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+                path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+                
+                if path:
+                    return path[0]
+        
+        if elapsed_time <= self.initial_defense_period:
+            if invaders:
+                invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+                closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+                invaderPos = closestInvader.getPosition()
+                problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+                path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+                
+                if path:
+                    nextPos = gameState.generateSuccessor(self.index, path[0]).getAgentPosition(self.index)
+                    if self.isInOurTerritory(nextPos):
+                        return path[0]
+                return self.patrolBehavior(gameState, myPos, actions)
+            
+            return self.patrolBehavior(gameState, myPos, actions)
+
+        print("time meet")
+        if all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts):
+            print("triggered")
+            return self.playOffensive(gameState)
+        
+        if invaders:
+            invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+            closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+            invaderPos = closestInvader.getPosition()
+            problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+            path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+            
+            if path:
+                return path[0]
+                
+            return min(actions, key=lambda x: self.getMazeDistance(
+                gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                invaderPos))
+        
+        return self.patrolBehavior(gameState, myPos, actions)
+    '''
+
+    def chooseAction(self, gameState):
+        # Working
+        if self.teamIndex is None:
+            allys = self.getTeam(gameState)
+            self.teamIndex = [i for i in allys if i != self.index][0]
+
+        myState = gameState.getAgentState(self.index)
+        myPos = myState.getPosition()
+        enemies = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        invaders = [a for a in enemies if a.isPacman and a.getPosition() is not None and self.isInOurTerritory(a.getPosition())]
+        ghosts = [a for a in enemies if not a.isPacman and a.getPosition() is not None]
+        actions = gameState.getLegalActions(self.index)
+        elapsed_time = time.time() - self.start_time
+
+        if 'Stop' in actions:
+            actions.remove('Stop')
+
+        print(f"Elapsed time: {elapsed_time:.2f} seconds")
+        
+        if elapsed_time <= self.initial_defense_period:
+            if invaders:
+                invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+                closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+                invaderPos = closestInvader.getPosition()
+                problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+                path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+                
+                if path:
+                    nextPos = gameState.generateSuccessor(self.index, path[0]).getAgentPosition(self.index)
+                    if self.isInOurTerritory(nextPos):
+                        return path[0]
+                
+            return self.patrolBehavior(gameState, myPos, actions)
+
+        if self.isInOurTerritory(myPos):
+            if invaders:
+                print("Found invaders in our territory - switching to defense")
+                invaderDists = [(self.getMazeDistance(myPos, a.getPosition()), a) for a in invaders]
+                closestInvader = min(invaderDists, key=lambda x: x[0])[1]
+                invaderPos = closestInvader.getPosition()
+                problem = SearchProblem(gameState, myPos, invaderPos, self.walls)
+                path = self.aStarSearch(problem, lambda x: betterHeuristic(x, invaderPos, gameState))
+                
+                if path:
+                    return path[0]
+                    
+                return min(actions, key=lambda x: self.getMazeDistance(
+                    gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                    invaderPos))
+        else:
+            print("time meet")
+            if all(self.isInTheirTerritory(ghost.getPosition()) for ghost in ghosts):
+                print("triggered")
+                return self.playOffensive(gameState)
+        
+        return self.patrolBehavior(gameState, myPos, actions)
+
+    def isAtBorder(self, pos):
+        midX = self.width // 2
+        x = int(pos[0])
+        if self.red:
+            return x == midX - 1
+        return x == midX
+
+    def isAtStart(self, myPos, gameState):
+        if self.red:
+            return int(myPos[0]) <= 1
+        else:
+            return int(myPos[0]) >= self.width - 2
+
+    def isInOurTerritory(self, pos):
+        midX = self.width // 2
+        if self.red:
+            return int(pos[0]) < midX
+        return int(pos[0]) >= midX
+            
+    def patrolBehavior(self, gameState, myPos, actions):
+            beliefs = self.getBeliefs(gameState)
+            if beliefs:
+                mostLikelyPos = max(beliefs, key=beliefs.get)
+                problem = SearchProblem(gameState, myPos, mostLikelyPos, self.walls)
+                path = self.aStarSearch(problem, lambda x: betterHeuristic(x, mostLikelyPos, gameState))
+                if path:
+                    return path[0]
+            
+            if not self.patrolPoints:
+                return actions[0]
+                
+            if self.target is None or myPos == self.target:
+                self.patrolIndex = (self.patrolIndex + 1) % len(self.patrolPoints)
+                self.target = self.patrolPoints[self.patrolIndex]
+            
+            problem = SearchProblem(gameState, myPos, self.target, self.walls)
+            path = self.aStarSearch(problem, lambda x: betterHeuristic(x, self.target, gameState))
+            
+            if path:
+                return path[0]
+                
             return actions[0]
-            
-        if self.target is None or myPos == self.target:
-            self.patrolIndex = (self.patrolIndex + 1) % len(self.patrolPoints)
-            self.target = self.patrolPoints[self.patrolIndex]
-        
-        problem = SearchProblem(gameState, myPos, self.target, self.walls)
-        path = self.aStarSearch(problem, lambda x: betterHeuristic(x, self.target, gameState))
-        
-        if path:
-            return path[0]
-            
-        return actions[0]
         
     def getBeliefs(self, gameState):
         beliefs = {}
@@ -537,7 +773,8 @@ class DefensiveAgent(CaptureAgent):
         if self.red:
             return int(pos[0]) >= midX
         return int(pos[0]) < midX
-
+    
+    '''
     def playOffensive(self, gameState):
         myPos = gameState.getAgentPosition(self.index)
         foodList = self.getFood(gameState).asList()
@@ -590,6 +827,257 @@ class DefensiveAgent(CaptureAgent):
                 gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
                 closestFood))
                 
+        return Directions.STOP
+    '''
+    '''
+    def playOffensive(self, gameState):
+        def getDirectionalAction(current, next):
+            dx = next[0] - current[0]
+            dy = next[1] - current[1]
+            
+            if dx > 0: return Directions.EAST
+            elif dx < 0: return Directions.WEST
+            elif dy > 0: return Directions.NORTH
+            elif dy < 0: return Directions.SOUTH
+            return Directions.STOP
+
+        myPos = gameState.getAgentPosition(self.index)
+        foodList = self.getFood(gameState).asList()
+        capsules = self.getCapsules(gameState)
+        
+        if not foodList:
+            return Directions.STOP
+        
+        actions = gameState.getLegalActions(self.index)
+        if 'Stop' in actions:
+            actions.remove('Stop')
+            
+        opponents = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        ghosts = [a for a in opponents if not a.isPacman and a.getPosition() is not None]
+        threatGhosts = [g for g in ghosts if not g.scaredTimer > 0]
+        
+        inDanger = any(self.getMazeDistance(myPos, g.getPosition()) <= 2 for g in threatGhosts)
+        
+        if inDanger and capsules:
+            closestCapsule = min(capsules, key=lambda x: self.getMazeDistance(myPos, x))
+            if self.getMazeDistance(myPos, closestCapsule) <= 3:
+                return min(actions, key=lambda x: self.getMazeDistance(
+                    gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                    closestCapsule))
+        
+        safeFood = []
+        for food in foodList:
+            isSafe = True
+            for ghost in threatGhosts:
+                if self.getMazeDistance(food, ghost.getPosition()) < 3:
+                    isSafe = False
+                    break
+            
+            if isSafe:
+                foodPos = food
+                escapeRoutes = 0
+                for dx, dy in [(0,1), (0,-1), (1,0), (-1,0)]:
+                    nextX = int(foodPos[0] + dx)
+                    nextY = int(foodPos[1] + dy)
+                    if not self.walls[nextX][nextY]:
+                        escapeRoutes += 1
+                if escapeRoutes <= 1:
+                    isSafe = False
+                    
+            if isSafe:
+                safeFood.append(food)
+        
+        if not safeFood:
+            if inDanger:
+                midPoint = (self.width // 2, self.height // 2)
+                return min(actions, key=lambda x: self.getMazeDistance(
+                    gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                    midPoint))
+            safeFood = foodList
+        
+        midY = self.height // 2
+        if self.index > self.teamIndex:
+            targetFood = [food for food in safeFood if food[1] >= midY]
+        else:
+            targetFood = [food for food in safeFood if food[1] < midY]
+        
+        if not targetFood:
+            targetFood = safeFood
+        
+        def greedyBestFirstSearch(start, goal):
+            frontier = PriorityQueue()
+            frontier.push((start, []), self.getMazeDistance(start, goal))
+            explored = set()
+            
+            while not frontier.isEmpty():
+                currentState, path = frontier.pop()
+                
+                if currentState == goal:
+                    return path
+                
+                if currentState in explored:
+                    continue
+                    
+                explored.add(currentState)
+                
+                x, y = currentState
+                for dx, dy in [(0,1), (0,-1), (1,0), (-1,0)]:
+                    nextX, nextY = x + dx, y + dy
+                    if not self.walls[int(nextX)][int(nextY)]:
+                        nextState = (nextX, nextY)
+                        if nextState not in explored:
+                            newPath = path + [getDirectionalAction(currentState, nextState)]
+                            priority = self.getMazeDistance(nextState, goal)
+                            frontier.push((nextState, newPath), priority)
+            return []
+        
+        foodDistances = []
+        for food in targetFood:
+            path = greedyBestFirstSearch(myPos, food)
+            if path and path[0] in actions:
+                pathRisk = sum(1 for ghost in threatGhosts for step in path 
+                            if self.getMazeDistance(step, ghost.getPosition()) < 2)
+                foodDistances.append((len(path) + pathRisk * 2, food, path[0]))
+        
+        if foodDistances:
+            return min(foodDistances, key=lambda x: x[0])[2]
+        
+        if targetFood:
+            closestFood = min(targetFood, key=lambda x: self.getMazeDistance(myPos, x))
+            return min(actions, key=lambda x: self.getMazeDistance(
+                gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                closestFood))
+        
+        return Directions.STOP
+    '''
+
+    def playOffensive(self, gameState):
+        def getDirectionalAction(current, next):
+            dx = next[0] - current[0]
+            dy = next[1] - current[1]
+            
+            if dx > 0: return Directions.EAST
+            elif dx < 0: return Directions.WEST
+            elif dy > 0: return Directions.NORTH
+            elif dy < 0: return Directions.SOUTH
+            return Directions.STOP
+
+        myPos = gameState.getAgentPosition(self.index)
+        foodList = self.getFood(gameState).asList()
+        capsules = self.getCapsules(gameState)
+        
+        if not foodList:
+            return Directions.STOP
+        
+        actions = gameState.getLegalActions(self.index)
+        if 'Stop' in actions:
+            actions.remove('Stop')
+            
+        opponents = [gameState.getAgentState(i) for i in self.getOpponents(gameState)]
+        ghosts = [a for a in opponents if not a.isPacman and a.getPosition() is not None]
+        threatGhosts = [g for g in ghosts if not g.scaredTimer > 0]
+        
+        inDanger = any(self.getMazeDistance(myPos, g.getPosition()) <= 2 for g in threatGhosts)
+        
+        if inDanger and capsules:
+            closestCapsule = min(capsules, key=lambda x: self.getMazeDistance(myPos, x))
+            if self.getMazeDistance(myPos, closestCapsule) <= 3:
+                return min(actions, key=lambda x: self.getMazeDistance(
+                    gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                    closestCapsule))
+        
+        safeFood = []
+        for food in foodList:
+            isSafe = True
+            for ghost in threatGhosts:
+                if self.getMazeDistance(food, ghost.getPosition()) < 3:
+                    isSafe = False
+                    break
+            
+            if isSafe:
+                foodPos = food
+                escapeRoutes = 0
+                for dx, dy in [(0,1), (0,-1), (1,0), (-1,0)]:
+                    nextX = int(foodPos[0] + dx)
+                    nextY = int(foodPos[1] + dy)
+                    if not self.walls[nextX][nextY]:
+                        escapeRoutes += 1
+                if escapeRoutes <= 1:
+                    isSafe = False
+                    
+            if isSafe:
+                safeFood.append(food)
+        
+        if not safeFood:
+            if inDanger:
+                midPoint = (self.width // 2, self.height // 2)
+                return min(actions, key=lambda x: self.getMazeDistance(
+                    gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                    midPoint))
+            safeFood = foodList
+        
+        if isinstance(self, OffensiveAgent):
+            midY = self.height // 2
+            if self.index > self.teamIndex:
+                targetFood = [food for food in safeFood if food[1] >= midY]
+            else:
+                targetFood = [food for food in safeFood if food[1] < midY]
+        else:
+            midX = self.width // 2
+            enemyMidX = midX + (midX if self.red else -midX)
+            targetFood = [food for food in safeFood if abs(food[0] - enemyMidX) < self.width // 4]
+        
+        if not targetFood:
+            targetFood = safeFood
+        
+        def greedyBestFirstSearch(start, goal):
+            frontier = PriorityQueue()
+            frontier.push((start, []), self.getMazeDistance(start, goal))
+            explored = set()
+            
+            while not frontier.isEmpty():
+                currentState, path = frontier.pop()
+                
+                if currentState == goal:
+                    return path
+                
+                if currentState in explored:
+                    continue
+                    
+                explored.add(currentState)
+                
+                x, y = currentState
+                for dx, dy in [(0,1), (0,-1), (1,0), (-1,0)]:
+                    nextX, nextY = x + dx, y + dy
+                    if not self.walls[int(nextX)][int(nextY)]:
+                        nextState = (nextX, nextY)
+                        if nextState not in explored:
+                            newPath = path + [getDirectionalAction(currentState, nextState)]
+                            if not isinstance(self, OffensiveAgent):
+                                edgeBias = abs(nextX - enemyMidX) * 0.5
+                                priority = self.getMazeDistance(nextState, goal) - edgeBias
+                            else:
+                                priority = self.getMazeDistance(nextState, goal)
+                            frontier.push((nextState, newPath), priority)
+            return []
+        
+        foodDistances = []
+        for food in targetFood:
+            path = greedyBestFirstSearch(myPos, food)
+            if path and path[0] in actions:
+                pathRisk = sum(1 for ghost in threatGhosts for step in path 
+                            if self.getMazeDistance(step, ghost.getPosition()) < 2)
+                foodDistances.append((len(path) + pathRisk * 2, food, path[0]))
+        
+        if foodDistances:
+            return min(foodDistances, key=lambda x: x[0])[2]
+        
+        if targetFood:
+            closestFood = min(targetFood, key=lambda x: self.getMazeDistance(myPos, x))
+            return min(actions, key=lambda x: self.getMazeDistance(
+                gameState.generateSuccessor(self.index, x).getAgentPosition(self.index),
+                closestFood))
+        
         return Directions.STOP
 
     def isPathSafe(self, gameState, path):
