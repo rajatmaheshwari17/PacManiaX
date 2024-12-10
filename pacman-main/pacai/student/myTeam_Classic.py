@@ -27,8 +27,8 @@ class DefensiveAgent(CaptureAgent):
             actions.remove('Stop')
 
         myPos = gameState.getAgentPosition(self.index)
-        myState = gameState.getAgentState(self.index)
-        isScared = myState._scaredTimer > 0
+        # myState = gameState.getAgentState(self.index)
+        # isScared = myState._scaredTimer > 0
         invaders = self.getVisibleInvaders(gameState)
         defendingFood = self.getFoodYouAreDefending(gameState).asList()
 
@@ -84,7 +84,9 @@ class DefensiveAgent(CaptureAgent):
 
         validActions = [
             action for action in actions
-            if self.isInOurTerritory(gameState.generateSuccessor(self.index, action).getAgentPosition(self.index))
+            if self.isInOurTerritory(
+                gameState.generateSuccessor(self.index, action).getAgentPosition(self.index)
+            )
         ]
 
         if validActions:
@@ -110,7 +112,9 @@ class DefensiveAgent(CaptureAgent):
     def chaseSafely(self, gameState, invaderPos, actions):
         validActions = [
             action for action in actions
-            if self.isInOurTerritory(gameState.generateSuccessor(self.index, action).getAgentPosition(self.index))
+            if self.isInOurTerritory(
+                gameState.generateSuccessor(self.index, action).getAgentPosition(self.index)
+            )
         ]
 
         if validActions:

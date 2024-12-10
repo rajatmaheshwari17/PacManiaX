@@ -1,3 +1,4 @@
+
 from pacai.agents.capture.capture import CaptureAgent
 from pacai.core.directions import Directions
 from pacai.util.priorityQueue import PriorityQueue
